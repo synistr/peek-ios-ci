@@ -1,0 +1,45 @@
+name: Screens
+run-name: ${{ inputs.sha }}
+
+# Simulator screenshots of Peek for comparing its design with Parcel's (the source's
+# .github/actions/ios-screens; ~/projects/peek-ios/tools/screens.py on the VPS). Never publishes
+# a build. Everything it uploads is encrypted with ARTIFACT_KEY.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit to run
+        required: true
+
+concurrency:
+  group: screens
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  screens:
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-26' }}
+    timeout-minutes: 60
+    steps:
+      # Not actions/checkout: it logs the commit subject, and this log is public.
+      - name: Check out the source
+        env:
+          DEPLOY_KEY: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          key="$RUNNER_TEMP/deploy-key"
+          (umask 077 && printf '%s\n' "$DEPLOY_KEY" > "$key")
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" \
+            > "$RUNNER_TEMP/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts"
+          git init -q .
+          git remote add origin git@github.com:synistr/peek-ios.git
+          git fetch -q --depth 1 origin "$SHA"
+          git checkout -q FETCH_HEAD
+          rm "$key"
+
+      - uses: ./.github/actions/ios-screens
+        with:
+          artifact-key: ${{ secrets.ARTIFACT_KEY }}
